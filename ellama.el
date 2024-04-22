@@ -866,36 +866,93 @@ If EPHEMERAL non nil new session will not be associated with any file."
   (oref element content))
 
 ;;;###autoload
-(defun ellama-context-add-file ()
-  "Add file to context."
-  (interactive)
+(defun ellama-context-add-file (arg)
+  "Add file to context.
+If called with a prefix argument (C-u), prompt the user to select an existing session
+or attach it to a temporary location for a new buffer."
+  (interactive "P")
   (let* ((file-name (read-file-name "Select file: " nil nil t))
          (element (ellama-context-element-file :name file-name)))
-    (ellama-context-element-add element)))
+    (if arg
+        (let* ((session-ids (cons "<new session>" (hash-table-keys ellama--active-sessions)))
+               (selected-session (completing-read "Select session to attach context: "
+                                                  session-ids nil t)))
+          (if (string= selected-session "<new session>")
+              (progn
+                (push element ellama--new-session-context)
+                (message "Context attached to a new session."))
+            (let ((session (with-current-buffer (ellama-get-session-buffer selected-session)
+                             ellama--current-session)))
+              (push element (ellama-session-context session))
+              (message "Context attached to session: %s" selected-session))))
+      (ellama-context-element-add element))))
 
 ;;;###autoload
-(defun ellama-context-add-buffer (buf)
-  "Add BUF to context."
-  (interactive "bSelect buffer: ")
-  (let ((element (ellama-context-element-buffer :name buf)))
-    (ellama-context-element-add element)))
+(defun ellama-context-add-buffer (arg)
+  "Add current buffer to context.
+If called with a prefix argument (C-u), prompt the user to select an existing session
+or attach it to a temporary location for a new buffer."
+  (interactive "P")
+  (let ((element (ellama-context-element-buffer :name (buffer-name))))
+    (if arg
+        (let* ((session-ids (cons "<new session>" (hash-table-keys ellama--active-sessions)))
+               (selected-session (completing-read "Select session to attach context: "
+                                                  session-ids nil t)))
+          (if (string= selected-session "<new session>")
+              (progn
+                (push element ellama--new-session-context)
+                (message "Context attached to a new session."))
+            (let ((session (with-current-buffer (ellama-get-session-buffer selected-session)
+                             ellama--current-session)))
+              (push element (ellama-session-context session))
+              (message "Context attached to session: %s" selected-session))))
+      (ellama-context-element-add element))))
+
 
 ;;;###autoload
-(defun ellama-context-add-selection ()
-  "Add file to context."
-  (interactive)
+(defun ellama-context-add-selection (arg)
+  "Add selected region to context.
+If called with a prefix argument (C-u), prompt the user to select an existing session
+or attach it to a temporary location for a new buffer."
+  (interactive "P")
   (if (region-active-p)
       (let* ((content (buffer-substring-no-properties (region-beginning) (region-end)))
              (element (ellama-context-element-text :content content)))
-        (ellama-context-element-add element))
+        (if arg
+            (let* ((session-ids (cons "<new session>" (hash-table-keys ellama--active-sessions)))
+                   (selected-session (completing-read "Select session to attach context: "
+                   session-ids nil t)))
+              (if (string= selected-session "<new session>")
+                  (progn
+                    (push element ellama--new-session-context)
+                    (message "Context attached to a new session."))
+                (let ((session (with-current-buffer (ellama-get-session-buffer selected-session)
+                                 ellama--current-session)))
+                  (push element (ellama-session-context session))
+                  (message "Context attached to session: %s" selected-session))))
+          (ellama-context-element-add element)))
     (warn "No active region")))
 
 ;;;###autoload
-(defun ellama-context-add-info-node (node)
-  "Add info NODE to context."
-  (interactive (list (Info-copy-current-node-name)))
+(defun ellama-context-add-info-node (arg node)
+  "Add info NODE to context.
+If called with a prefix argument (C-u), prompt the user to select an existing session
+or attach it to a temporary location for a new buffer."
+  (interactive "P\nsEnter node name: ")
   (let ((element (ellama-context-element-info-node :name node)))
-    (ellama-context-element-add element)))
+    (if arg
+        (let* ((session-ids (cons "<new session>" (hash-table-keys ellama--active-sessions)))
+               (selected-session (completing-read "Select session to attach context: "
+                                                  session-ids nil t)))
+          (if (string= selected-session "<new session>")
+              (progn
+                (push element ellama--new-session-context)
+                (message "Context attached to a new session."))
+            (let ((session (with-current-buffer (ellama-get-session-buffer selected-session)
+                             ellama--current-session)))
+              (push element (ellama-session-context session))
+              (message "Context attached to session: %s" selected-session))))
+      (ellama-context-element-add element))))
 
 (defun ellama--translate-string (s)
   "Translate string S to `ellama-language' syncronously."
