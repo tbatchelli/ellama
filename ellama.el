@@ -1658,5 +1658,59 @@ buffer."
   (setq ellama--new-session-context nil)
   (message "In-memory context cleared for the new session."))
 
+;; add support for using web pages (urls) as context elements
+;; URL context element
+
+(defclass ellama-context-element-url (ellama-context-element)
+  ((url :initarg :url :type string))
+  "A structure for holding information about a context element.")
+
+(cl-defmethod ellama-context-element-extract
+  ((element ellama-context-element-url))
+  "Extract the content of the context ELEMENT."
+  (with-slots (url) element
+    (with-current-buffer (url-retrieve-synchronously url)
+      (goto-char (point-min))
+      (search-forward "<!DOCTYPE")
+      (beginning-of-line)
+      (kill-region (point-min) (point))
+      (shr-insert-document (libxml-parse-html-region (point-min) (point-max)))
+      (buffer-substring-no-properties (point-min) (point-max)))))
+
+(cl-defmethod ellama-context-element-format
+  ((element ellama-context-element-url) (mode (eql 'markdown-mode)))
+  "Format the context ELEMENT for the major MODE."
+  (ignore mode)
+  (with-slots (url) element
+    (format "[[%s][%s]]" url url)))
+
+(cl-defmethod ellama-context-element-format
+  ((element ellama-context-element-url) (mode (eql 'org-mode)))
+  "Format the context ELEMENT for the major MODE."
+  (ignore mode)
+  (with-slots (url) element
+    (format "[[%s][%s]]" url url)))
+
+;;;###autoload
+(defun ellama-context-add-url (arg url)
+  "Add URL to context.
+If called with a prefix argument (C-u), prompt the user to select an existing session
+or attach it to a temporary location for a new buffer."
+  (interactive "P\nsEnter URL: ")
+  (let ((element (ellama-context-element-url :url url)))
+    (if arg
+        (let* ((session-ids (cons "<new session>" (hash-table-keys ellama--active-sessions)))
+               (selected-session (completing-read "Select session to attach context: "
+                                                  session-ids nil t)))
+          (if (string= selected-session "<new session>")
+              (progn
+                (push element ellama--new-session-context)
+                (message "Context attached to a new session."))
+            (let ((session (with-current-buffer (ellama-get-session-buffer selected-session)
+                             ellama--current-session)))
+              (push element (ellama-session-context session))
+              (message "Context attached to session: %s" selected-session))))
+      (ellama-context-element-add element))))
+
 (provide 'ellama)
 ;;; ellama.el ends here.
