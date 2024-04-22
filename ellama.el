@@ -1167,6 +1167,19 @@ Will call `ellama-chat-done-callback' on TEXT."
        :on-done
        (ellama--call-llm-with-translated-prompt buffer session translation-buffer)))))
 
+;; suport flatter model list
+(defun ellama-get-ollama-models ()
+  "Return a list of available ollama models."
+  (when (and ellama-ollama-binary (file-exists-p ellama-ollama-binary))
+    (mapcar (lambda (s)
+              (cons (format "ollama: %s" (car (split-string s)))
+                    (make-llm-ollama
+                     :chat-model (car (split-string s))
+                     :embedding-model (car (split-string s)))))
+            (seq-drop
+             (process-lines ellama-ollama-binary "ls") 1))))
+
+
 ;;;###autoload
 (defun ellama-chat (prompt &optional create-session &rest args)
   "Send PROMPT to ellama chat with conversation history.
@@ -1177,17 +1190,16 @@ ARGS contains keys for fine control.
 :provider PROVIDER -- PROVIDER is an llm provider for generation."
   (interactive "sAsk ellama: ")
   (let* ((providers (append
-                     `(("default model" . ellama-provider)
-		               ,(if (and ellama-ollama-binary (file-exists-p ellama-ollama-binary))
-			                '("ollama model" . (ellama-get-ollama-local-model))))
+                     `(("default model" . ,ellama-provider))
+                     (ellama-get-ollama-models)
                      ellama-providers))
-	     (variants (mapcar #'car providers))
-	     (provider (if current-prefix-arg
-		               (eval (alist-get
-			                  (completing-read "Select model: " variants)
-			                  providers nil nil #'string=))
-		             (or (plist-get args :provider)
-			             ellama-provider)))
+         (variants (mapcar #'car providers))
+         (provider (if current-prefix-arg
+                       (cdr (assoc
+                             (completing-read "Select model: " variants)
+                             providers))
+                     (or (plist-get args :provider)
+                         ellama-provider)))
 	     (session (if (or create-session
 			              current-prefix-arg
 			              (and (not ellama--current-session)
