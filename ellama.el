@@ -1636,5 +1636,27 @@ buffer."
           (org-content 1)
           (display-buffer buffer))
       (message "No active session."))))
+
+;;;###autoload
+(defun ellama-clear-current-session-context ()
+  "Clear the in-memory context for the current active session."
+  (interactive)
+  (let* ((session-id (or ellama--current-session-id (and ellama--current-session (ellama-session-id
+  ellama--current-session))))
+         (session (or ellama--current-session (and session-id (with-current-buffer
+         (ellama-get-session-buffer session-id) ellama--current-session)))))
+    (if session
+        (progn
+          (setf (ellama-session-context session) nil)
+          (message "In-memory context cleared for the current active session."))
+      (message "No active session found."))))
+
+;;;###autoload
+(defun ellama-clear-new-session-context ()
+  "Clear the in-memory context for the new session."
+  (interactive)
+  (setq ellama--new-session-context nil)
+  (message "In-memory context cleared for the new session."))
+
 (provide 'ellama)
 ;;; ellama.el ends here.
