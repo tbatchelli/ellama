@@ -857,13 +857,14 @@ If EPHEMERAL non nil new session will not be associated with any file."
   ((element ellama-context-element-text) (mode (eql 'markdown-mode)))
   "Format the context ELEMENT for the major MODE."
   (ignore mode)
-  (oref element content))
+  (format "```context\n%s\n```" (oref element content)))
 
 (cl-defmethod ellama-context-element-format
   ((element ellama-context-element-text) (mode (eql 'org-mode)))
   "Format the context ELEMENT for the major MODE."
   (ignore mode)
-  (oref element content))
+  (format "#+BEGIN_QUOTE Context\n%s\n#+END_QUOTE"
+	  (oref element content)))
 
 ;;;###autoload
 (defun ellama-context-add-file (arg)
@@ -1547,5 +1548,93 @@ buffer."
   (interactive)
   (setq ellama-chat-translation-enabled nil))
 
+
+;;;###autoload
+(defun ellama-display-all-sessions-context ()
+  "Display each session and its context in a new ephemeral buffer named *ellama-sessions*."
+  (interactive)
+  (let ((buffer (get-buffer-create "*ellama-sessions*")))
+    (with-current-buffer buffer
+      (erase-buffer)
+      (org-mode)
+      (insert "* Ellama Sessions and Contexts\n\n")
+      (dolist (session-id (hash-table-keys ellama--active-sessions))
+        (let ((session-buffer (ellama-get-session-buffer session-id)))
+          (if (buffer-live-p session-buffer)
+              (let ((session (with-current-buffer session-buffer
+                               ellama--current-session)))
+                (insert (format "** Session: %s\n" session-id))
+                (if session
+                    (progn
+                      (let ((context (ellama-session-context session)))
+                        (when context
+                          (insert "*** Context (in memory):\n")
+                          (dolist (element context)
+                            (insert (ellama-context-element-format element 'org-mode))
+                            (insert "\n"))))
+                      (let ((file (ellama-session-file session)))
+                        (when file
+                          (with-temp-buffer
+                            (insert-file-contents file)
+                            (goto-char (point-min))
+                            (when (re-search-forward "^#\\+BEGIN_QUOTE Context$" nil t)
+                              (let ((beg (point)))
+                                (when (re-search-forward "^#\\+END_QUOTE$" nil t)
+                                  (let ((text (buffer-substring-no-properties beg (match-beginning
+                                  0))))
+                                    (unless (string-blank-p text)
+                                      (with-current-buffer buffer
+                                        (insert "*** Context (in file):\n")
+                                        (insert text)
+                                        (insert "\n")))))))))))
+                  (insert "*** Session not found.\n")))
+            (insert (format "** Session buffer for %s not found.\n" session-id)))))
+      (goto-char (point-min))
+      (org-content 2))
+    (display-buffer buffer)))
+
+(defun ellama-display-current-session-context ()
+  "Display the current active session and its context in a new ephemeral buffer named
+  *ellama-current-session-context*."
+  (interactive)
+  (let* ((session-id (or ellama--current-session-id (and ellama--current-session (ellama-session-id
+  ellama--current-session))))
+         (session (or ellama--current-session (and session-id (with-current-buffer
+         (ellama-get-session-buffer session-id) ellama--current-session))))
+         (buffer (get-buffer-create "*ellama-current-session-context*")))
+    (if session
+        (with-current-buffer buffer
+          (erase-buffer)
+          (org-mode)
+          (insert (format "* Current Session: %s\n\n" (ellama-session-id session)))
+          (let ((context (ellama-session-context session)))
+            (when context
+              (insert "** Context (in memory):\n")
+              (dolist (element context)
+                (insert (ellama-context-element-format element 'org-mode))
+                (insert "\n"))))
+          (let ((file (ellama-session-file session)))
+            (when file
+              (with-temp-buffer
+                (insert-file-contents file)
+                (goto-char (point-min))
+                (when (re-search-forward "^#\\+BEGIN_QUOTE Context$" nil t)
+                  (let ((beg (point)))
+                    (when (re-search-forward "^#\\+END_QUOTE$" nil t)
+                      (let ((text (buffer-substring-no-properties beg (match-beginning 0))))
+                        (unless (string-blank-p text)
+                          (with-current-buffer buffer
+                            (insert "** Context (in file):\n")
+                            (insert text)
+                            (insert "\n"))))))))))
+          (when ellama--new-session-context
+            (insert "** Context (for new session):\n")
+            (dolist (element ellama--new-session-context)
+              (insert (ellama-context-element-format element 'org-mode))
+              (insert "\n")))
+          (goto-char (point-min))
+          (org-content 1)
+          (display-buffer buffer))
+      (message "No active session."))))
 (provide 'ellama)
 ;;; ellama.el ends here.
