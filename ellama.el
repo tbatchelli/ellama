@@ -1170,6 +1170,10 @@ Will call `ellama-chat-done-callback' on TEXT."
 ;; suport flatter model list
 (defun ellama-get-ollama-models ()
   "Return a list of available ollama models."
+  ;; needed for some reason. I guess this was initialized somewhere
+  ;; else but I don't know where
+  (declare-function make-llm-ollama "llm-ollama")
+  (require 'llm-ollama)
   (when (and ellama-ollama-binary (file-exists-p ellama-ollama-binary))
     (mapcar (lambda (s)
               (cons (format "ollama: %s" (car (split-string s)))
@@ -1195,29 +1199,29 @@ ARGS contains keys for fine control.
                      ellama-providers))
          (variants (mapcar #'car providers))
          (provider (if current-prefix-arg
-                       (cdr (assoc
-                             (completing-read "Select model: " variants)
-                             providers))
+                       (eval (alist-get
+                              (completing-read "Select model: " variants)
+                              providers nil nil #'string=))
                      (or (plist-get args :provider)
                          ellama-provider)))
-	     (session (if (or create-session
-			              current-prefix-arg
-			              (and (not ellama--current-session)
-			                   (not ellama--current-session-id)))
-		              (ellama-new-session provider prompt)
-		            (or ellama--current-session
-			            (with-current-buffer (ellama-get-session-buffer
-					                          ellama--current-session-id)
-			              ellama--current-session))))
-	     (buffer (ellama-get-session-buffer
-		          (ellama-session-id session)))
-	     (file-name (ellama-session-file session))
-	     (translation-buffer (when ellama-chat-translation-enabled
-			                   (if file-name
-				                   (progn
-				                     (find-file-noselect
-				                      (ellama--get-translation-file-name file-name)))
-				                 (get-buffer-create (ellama-session-id session))))))
+	 (session (if (or create-session
+			  current-prefix-arg
+			  (and (not ellama--current-session)
+			       (not ellama--current-session-id)))
+		      (ellama-new-session provider prompt)
+		    (or ellama--current-session
+			(with-current-buffer (ellama-get-session-buffer
+					      ellama--current-session-id)
+			  ellama--current-session))))
+	 (buffer (ellama-get-session-buffer
+		  (ellama-session-id session)))
+	 (file-name (ellama-session-file session))
+	 (translation-buffer (when ellama-chat-translation-enabled
+			       (if file-name
+				   (progn
+				     (find-file-noselect
+				      (ellama--get-translation-file-name file-name)))
+				 (get-buffer-create (ellama-session-id session))))))
     (if ellama-chat-translation-enabled
 	(ellama--translate-interaction prompt translation-buffer buffer session)
       (display-buffer buffer)
