@@ -894,7 +894,8 @@ or attach it to a temporary location for a new buffer."
 If called with a prefix argument (C-u), prompt the user to select an existing session
 or attach it to a temporary location for a new buffer."
   (interactive "P")
-  (let ((element (ellama-context-element-buffer :name (buffer-name))))
+  (let* ((bn (read-buffer "Select Buffer: " (buffer-name)))
+	 (element (ellama-context-element-buffer :name bn)))
     (if arg
         (let* ((session-ids (cons "<new session>" (hash-table-keys ellama--active-sessions)))
                (selected-session (completing-read "Select session to attach context: "
