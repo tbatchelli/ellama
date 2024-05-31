@@ -991,6 +991,11 @@ or attach it to a temporary location for a new buffer."
 	      prompt)
     prompt))
 
+(defun ellama--url-encode-html (html)
+  "URL encode HTML string."
+  (url-hexify-string html))
+
+
 (defun ellama-stream (prompt &rest args)
   "Query ellama for PROMPT.
 ARGS contains keys for fine control.
@@ -1030,7 +1035,8 @@ when the request completes (with BUFFER current)."
 		    (lambda (msg)
 		      (error "Error calling the LLM: %s" msg))))
 	 (donecb (or (plist-get args :on-done) #'ignore))
-	 (prompt-with-ctx (ellama--prompt-with-context prompt))
+	 (prompt-with-ctx-raw (ellama--prompt-with-context prompt))
+	 (prompt-with-ctx (ellama--url-encode-html prompt-with-ctx-raw))
 	 (llm-prompt (if session
 			 (if (llm-chat-prompt-p (ellama-session-prompt session))
 			     (progn
