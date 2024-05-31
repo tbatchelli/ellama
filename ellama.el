@@ -6,7 +6,7 @@
 ;; URL: http://github.com/s-kostyaev/ellama
 ;; Keywords: help local tools
 ;; Package-Requires: ((emacs "28.1") (llm "0.6.0") (spinner "1.7.4"))
-;; Version: 0.9.1
+;; Version: 0.9.5
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Created: 8th Oct 2023
 
@@ -40,6 +40,7 @@
 (require 'llm)
 (require 'spinner)
 (require 'info)
+(require 'shr)
 (eval-when-compile (require 'rx))
 
 (defgroup ellama nil
@@ -367,43 +368,53 @@ Too low value can break generated code by splitting long comment lines."
       (fill-region (point-min) (point-max) nil t t))
     (buffer-substring-no-properties (point-min) (point-max))))
 
+(defun ellama--replace-first-begin-src (text)
+  "Replace first begin src in TEXT."
+  (if (not (string-match-p (rx (literal "#+BEGIN_SRC")) text))
+      (replace-regexp-in-string "^[[:space:]]*```\\(\\(.\\|\n\\)*\\)" "#+BEGIN_SRC\\1" text)
+    text))
+
 (defun ellama--translate-markdown-to-org-filter (text)
   "Filter to translate code blocks from markdown syntax to org syntax in TEXT.
 This filter contains only subset of markdown syntax to be good enough."
-  (thread-last text
-       ;; code blocks
-       (replace-regexp-in-string "^[[:space:]]*```\\(.+\\)$" "#+BEGIN_SRC \\1")
-       (replace-regexp-in-string "^<!-- language: \\(.+\\) -->\n```" "#+BEGIN_SRC \\1")
-       (replace-regexp-in-string "^[[:space:]]*```$" "#+END_SRC")
-       ;; lists
-       (replace-regexp-in-string "^\\* " "+ ")
-       ;; bold
-       (replace-regexp-in-string "\\*\\*\\(.+?\\)\\*\\*" "*\\1*")
-       (replace-regexp-in-string "__\\(.+?\\)__" "*\\1*")
-       (replace-regexp-in-string "<b>\\(.+?\\)</b>" "*\\1*")
-       ;; italic
-       ;; (replace-regexp-in-string "_\\(.+?\\)_" "/\\1/") ;; most of the time it breaks code blocks, so disable it
-       (replace-regexp-in-string "<i>\\(.+?\\)</i>" "/\\1/")
-       ;; inline code
-       (replace-regexp-in-string "`\\(.+?\\)`" "~\\1~")
-       ;; underlined
-       (replace-regexp-in-string "<u>\\(.+?\\)</u>" "_\\1_")
-       ;; strikethrough
-       (replace-regexp-in-string "~~\\(.+?\\)~~" "+\\1+")
-       (replace-regexp-in-string "<s>\\(.+?\\)</s>" "+\\1+")
-       ;; headings
-       (replace-regexp-in-string "^# " "* ")
-       (replace-regexp-in-string "^## " "** ")
-       (replace-regexp-in-string "^### " "*** ")
-       (replace-regexp-in-string "^#### " "**** ")
-       (replace-regexp-in-string "^##### " "***** ")
-       (replace-regexp-in-string "^###### " "***** ")
-       ;; badges
-       (replace-regexp-in-string "\\[\\!\\[.*?\\](\\(.*?\\))\\](\\(.*?\\))" "[[\\2][file:\\1]]")
-       ;;links
-       (replace-regexp-in-string "\\[\\(.*?\\)\\](\\(.*?\\))" "[[\\2][\\1]]")
-       ;; filling long lines
-       (ellama--fill-long-lines)))
+  (thread-last
+    text
+    ;; code blocks
+    (replace-regexp-in-string "^[[:space:]]*```\\(.+\\)$" "#+BEGIN_SRC \\1")
+    (ellama--replace-first-begin-src)
+    (replace-regexp-in-string "^<!-- language: \\(.+\\) -->\n```" "#+BEGIN_SRC \\1")
+    (replace-regexp-in-string "^[[:space:]]*```$" "#+END_SRC")
+    (replace-regexp-in-string "^[[:space:]]*```" "#+END_SRC\n")
+    (replace-regexp-in-string "```" "\n#+END_SRC\n")
+    ;; lists
+    (replace-regexp-in-string "^\\* " "+ ")
+    ;; bold
+    (replace-regexp-in-string "\\*\\*\\(.+?\\)\\*\\*" "*\\1*")
+    (replace-regexp-in-string "__\\(.+?\\)__" "*\\1*")
+    (replace-regexp-in-string "<b>\\(.+?\\)</b>" "*\\1*")
+    ;; italic
+    ;; (replace-regexp-in-string "_\\(.+?\\)_" "/\\1/") ;; most of the time it breaks code blocks, so disable it
+    (replace-regexp-in-string "<i>\\(.+?\\)</i>" "/\\1/")
+    ;; inline code
+    (replace-regexp-in-string "`\\(.+?\\)`" "~\\1~")
+    ;; underlined
+    (replace-regexp-in-string "<u>\\(.+?\\)</u>" "_\\1_")
+    ;; strikethrough
+    (replace-regexp-in-string "~~\\(.+?\\)~~" "+\\1+")
+    (replace-regexp-in-string "<s>\\(.+?\\)</s>" "+\\1+")
+    ;; headings
+    (replace-regexp-in-string "^# " "* ")
+    (replace-regexp-in-string "^## " "** ")
+    (replace-regexp-in-string "^### " "*** ")
+    (replace-regexp-in-string "^#### " "**** ")
+    (replace-regexp-in-string "^##### " "***** ")
+    (replace-regexp-in-string "^###### " "***** ")
+    ;; badges
+    (replace-regexp-in-string "\\[\\!\\[.*?\\](\\(.*?\\))\\](\\(.*?\\))" "[[\\2][file:\\1]]")
+    ;;links
+    (replace-regexp-in-string "\\[\\(.*?\\)\\](\\(.*?\\))" "[[\\2][\\1]]")
+    ;; filling long lines
+    (ellama--fill-long-lines)))
 
 (defcustom ellama-enable-keymap t
   "Enable or disable Ellama keymap."
@@ -428,6 +439,11 @@ This filter contains only subset of markdown syntax to be good enough."
   "LLM provider for generating names."
   :group 'ellama
   :type '(sexp :validate 'cl-struct-p))
+
+(defcustom ellama-always-show-chain-steps nil
+  "Always show ellama chain buffers."
+  :type 'boolean
+  :group 'ellama)
 
 (defvar-local ellama--current-session nil)
 
@@ -1104,6 +1120,50 @@ when the request completes (with BUFFER current)."
 				      (setq ellama--current-request nil)
 				      (ellama-request-mode -1)))))))))
 
+(defun ellama-chain (initial-prompt forms)
+  "Call chain of FORMS on INITIAL-PROMPT.
+Each form is a plist that can contain different options:
+
+:provider PROVIDER - use PROVIDER instead of `ellama-provider'.
+
+:transform FUNCTION - use FUNCTION to transform result of previous step to new
+prompt.
+
+:session SESSION - use SESSION in current step.
+
+:chat BOOL - if BOOL use chat buffer, otherwise use temp buffer.  Make sense for
+last step only.
+
+:show BOOL - if BOOL show buffer for this step."
+  (let* ((hd (car forms))
+	 (tl (cdr forms))
+	 (provider (or (plist-get hd :provider) ellama-provider))
+	 (transform (or (plist-get hd :transform) #'identity))
+	 (prompt (apply transform (list initial-prompt)))
+	 (session (plist-get hd :session))
+	 (chat (plist-get hd :chat))
+	 (show (or (plist-get hd :show) ellama-always-show-chain-steps chat))
+	 (buf (if (or (and tl (not chat)) (not session))
+		  (get-buffer-create (make-temp-name
+				      (ellama-generate-name provider real-this-command prompt)))
+		(ellama-get-session-buffer ellama--current-session-id))))
+    (when show
+      (display-buffer buf))
+    (with-current-buffer buf
+      (funcall ellama-major-mode))
+    (if chat
+	(ellama-chat prompt nil :provider provider)
+      (ellama-stream
+       prompt
+       :provider provider
+       :buffer buf
+       :session session
+       :filter (when (derived-mode-p 'org-mode)
+		 #'ellama--translate-markdown-to-org-filter)
+       :on-done (lambda (res)
+		  (when tl
+		    (ellama-chain res tl)))))))
+
 (defun ellama-chat-done (text)
   "Chat done.
 Will call `ellama-chat-done-callback' on TEXT."
@@ -1204,15 +1264,24 @@ ARGS contains keys for fine control.
                      `(("default model" . ,ellama-provider))
                      (ellama-get-ollama-models)
                      ellama-providers))
-         (variants (mapcar #'car providers))
-         (provider (if current-prefix-arg
-                       (eval (alist-get
-                              (completing-read "Select model: " variants)
-                              providers nil nil #'string=))
-                     (or (plist-get args :provider)
-                         ellama-provider)))
+	 (variants (mapcar #'car providers))
+	 (provider (if current-prefix-arg
+		       (eval (alist-get
+			      (completing-read "Select model: " variants)
+			      providers nil nil #'string=))
+		     (or (plist-get args :provider)
+			 ellama-provider)))
 	 (session (if (or create-session
 			  current-prefix-arg
+			  (and provider
+			       (or (plist-get args :provider)
+				   (not (equal provider ellama-provider)))
+			       ellama--current-session-id
+			       (with-current-buffer (ellama-get-session-buffer
+						     ellama--current-session-id)
+				 (not (equal
+				       provider
+				       (ellama-session-provider ellama--current-session)))))
 			  (and (not ellama--current-session)
 			       (not ellama--current-session-id)))
 		      (ellama-new-session provider prompt)
@@ -1236,7 +1305,7 @@ ARGS contains keys for fine control.
 	(save-excursion
 	  (goto-char (point-max))
 	  (insert (ellama-get-nick-prefix-for-mode) " " ellama-user-nick ":\n"
-		  (ellama--format-context session) prompt "\n\n"
+		  (ellama--format-context session) (ellama--fill-long-lines prompt) "\n\n"
 		  (ellama-get-nick-prefix-for-mode) " " ellama-assistant-nick ":\n")
 	  (ellama-stream prompt
 			 :session session
@@ -1505,18 +1574,29 @@ buffer."
   (ellama-make-format ellama-make-table-prompt-template))
 
 (defun ellama-summarize-webpage (url)
-  "Summarize webpage fetched from URL."
-  (interactive "sEnter URL you want to summarize: ")
+  "Summarize webpage fetched from URL.
+
+Summarize the URL at point if `thing-at-point' is present, or using
+`shr-url-at-point' if a URL is at point in modes like `eww' or `elfeed',
+otherwise prompt user for URL to summarize."
+  (interactive
+   (list
+    (if-let ((url (or (and (fboundp 'thing-at-point) (thing-at-point 'url))
+                      (shr-url-at-point nil))))
+        url
+      (read-string "Enter URL you want to summarize: "))))
   (let ((buffer-name (url-retrieve-synchronously url t)))
     ;; (display-buffer buffer-name)
     (with-current-buffer buffer-name
       (goto-char (point-min))
-      (search-forward "<!DOCTYPE")
+      (or (search-forward "<!DOCTYPE" nil t)
+          (search-forward "<html" nil))
       (beginning-of-line)
       (kill-region (point-min) (point))
       (shr-insert-document (libxml-parse-html-region (point-min) (point-max)))
       (goto-char (point-min))
-      (search-forward "<!DOCTYPE")
+      (or (search-forward "<!DOCTYPE" nil t)
+          (search-forward "<html" nil))
       (beginning-of-line)
       (kill-region (point) (point-max))
       (ellama-summarize))))
